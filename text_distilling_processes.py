@@ -284,7 +284,6 @@ class RegexRead:
         Returns:
             All instances that match the desired regular expression.
         """
-        print(text_line)
         return re.findall(self.regex, text_line)
 
 
