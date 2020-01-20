@@ -482,8 +482,8 @@ class ReadBetweenWhitespaces(RegexRead):
         Returns:
             The received text string with repeated whitespaces removed.
         """
-        #line = " " + line
         if self.clean_whitespaces:
             line = re.sub('\s+', ' ', line)
-
-        return line.rstrip()
+        line = line.rstrip()
+        
+        return line + " "
