@@ -465,7 +465,7 @@ class ReadBetweenWhitespaces(RegexRead):
         """Replaces base class implementation, should not be called.
 
         This method should not be called, ReadBetweenWhitespaces does
-        not optional parameters
+        not have optional parameters
 
         Args:
             opt_list: List of size 1,2, or 3 that contains strings.
@@ -486,3 +486,98 @@ class ReadBetweenWhitespaces(RegexRead):
         line = line.rstrip()
         
         return line + " "
+
+class MultipleRegexRead(RegexRead):
+    """Reads and matches a line of text to multiple Regular expressions.
+
+    The MultipleRegexRead class is very similar to the RegexRead class
+    but instead of looking for matches to a single regular expression
+    it check multiple regular expressions.
+
+    Attributes:
+        help: String containing a short help text.
+        name: String containing the name that identifies this process.
+        regex_dict: Dict of regular regular expressions and their identifiers.
+        exclusive_match: flag that indicates wheter or not regular
+            expression matching continues once a match is found.
+        clean_whitespaces: flag that indicates if whitespaces should
+            be cleaned or not.
+    """
+    def __init__(self, exclusive_match, clean_whitespaces=True, regex_dict = {}):
+        super().__init__()
+        self.help = "Reads text using multiple Regular Expressions"
+        self.name = "MULTIREGEXREAD"
+        self.exclusive_match = exclusive_match
+        self.clean_whitespaces = clean_whitespaces
+        self.regex_dict = regex_dict
+
+    def config_process(self, opt_list):
+        """Configures option flags and list of regular expressions.
+
+        This method always sets the 'exclusive_match' and 'clean_whitespaces'
+        attributes, optionally it also replaces the regular expressions present
+        in 'regex_list'. The attributes are set according to 'len(opt_list)':
+            2 - 'exclusive_match' is set to True if 'opt_list[0]' == 'yes',
+                'clean_whitespaces' == is set to True if 'opt_list[1]' == 'yes'.
+            4 or more (only even values are supported) - The same as 2 and
+                regex_dict is built from 'opt_list[2:]'.
+
+        Args:
+            opt_list: List of size 2 or more that contains strings.
+
+        """
+
+        list_size = len(opt_list)
+        list_size_is_even = (list_size % 2 == 0)
+        if (list_size >= 2) and list_size_is_even:
+            self.exclusive_match = opt_list[0] == "yes"
+            self.clean_whitespaces = opt_list[1] == "yes"
+
+            if list_size > 2:
+                it = iter(opt_list[2:])
+                listOfTuples = zip(it, it)
+                self.regex_dict = dict(listOfTuples)
+                print(self.regex_dict)
+        else:
+            raise ValueError(self.name +
+                             " process requires an even number of options")
+
+    def _cleanup_whitespaces(self, line):
+        """Clean_up as RegexRead or no clean_up.
+
+        Args:
+            line: Line of text, possibly with whitespaces..
+
+        Returns:
+            The received text string with whitespaces removed or unchanged.
+        """
+        if self.clean_whitespaces:
+            line = super()._cleanup_whitespaces(line)
+
+        return line
+
+    def _match_regex(self, text_line):
+        """Applies multiple regular expressions from 'regex_list' variable.
+
+        Args:
+            text_line: Line of text to be processed.
+
+        Returns:
+            If 'exclusive_match' is True then return a list with all
+            instances that match the desired regular expression.
+            If 'exclusive_match' is False then returns a list of tuples,
+            each tuple contains the regular expression and all instances
+            that matched it.
+        """
+        match_found = False
+        result_dict = {}
+        for regex_id, regex in self.regex_dict.items():
+            if not (match_found and self.exclusive_match):
+                self.regex = regex
+                temp = super()._match_regex(text_line)
+
+                if temp:
+                    match_found = True
+                    result_dict.update({regex_id : temp})
+
+        return result_dict
