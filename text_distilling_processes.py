@@ -537,7 +537,7 @@ class MultipleRegexRead(RegexRead):
                 it = iter(opt_list[2:])
                 listOfTuples = zip(it, it)
                 self.regex_dict = dict(listOfTuples)
-                print(self.regex_dict)
+                #print(self.regex_dict)
         else:
             raise ValueError(self.name +
                              " process requires an even number of options")
