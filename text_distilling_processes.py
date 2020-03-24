@@ -536,7 +536,11 @@ class MultipleRegexRead(RegexRead):
             if list_size > 2:
                 it = iter(opt_list[2:])
                 listOfTuples = zip(it, it)
-                self.regex_dict = dict(listOfTuples)
+                for regex_id, regex in listOfTuples:
+                    if regex_id in self.regex_dict:
+                        self.regex_dict[regex_id].append(regex)
+                    else:
+                        self.regex_dict[regex_id] = [regex]
                 #print(self.regex_dict)
         else:
             raise ValueError(self.name +
@@ -571,13 +575,14 @@ class MultipleRegexRead(RegexRead):
         """
         match_found = False
         result_dict = {}
-        for regex_id, regex in self.regex_dict.items():
-            if not (match_found and self.exclusive_match):
-                self.regex = regex
-                temp = super()._match_regex(text_line)
+        for regex_id, regex_list in self.regex_dict.items():
+            for regex in regex_list:
+                if not (match_found and self.exclusive_match):
+                    self.regex = regex
+                    temp = super()._match_regex(text_line)
 
-                if temp:
-                    match_found = True
-                    result_dict.update({regex_id : temp})
+                    if temp:
+                        match_found = True
+                        result_dict.update({regex_id : temp})
 
         return result_dict
