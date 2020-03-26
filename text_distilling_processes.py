@@ -252,17 +252,24 @@ class RegexRead:
     """Reads a line of text and extract text using regular expressions.
 
     The RegexRead class reads a text line, strips it of all
-    whitespaces then extracts text using.
+    whitespaces then extracts text using. Optionally this 
+    class will continue reading lines until a stop condition
+    is provided.
 
     Attributes:
         help: String containing a short help text.
         name: String containing the name that identifies this process.
         regex: String containing the regular expression.
+        stop_token: Optional string containing a stop condition.
     """
-    def __init__(self, regex=None):
+    def __init__(self, regex=None, stop_on_match=False, stop_token=None):
         self.help = "Reads text using Regular Expressions"
         self.name = "REGEXREAD"
         self.regex = regex
+        self.stop_on_match = stop_on_match
+        self.stop_token = stop_token
+
+        self.result_data = None
 
     def config_process(self, opt_list):
         """Configures the 'regex' variable.
@@ -271,12 +278,30 @@ class RegexRead:
         is used to extract text using regular expressions.
 
         Args:
-            opt_list: List of size 1 that contains a string.
+            opt_list: List of size 1, 2 or 3 that contain strings.
+                1 - regex = opt_list[0].
+                2 - The same as 1 plus stop_on_match is True 
+                    if opt_list[1] == "yes"
+                3 - The same as 2 plus stop_token = opt_list[2]
         """
-        self.regex = opt_list[0]
+        list_size = len(opt_list)
+        if list_size in range(1,3):
+            self.regex = opt_list[0]
+            if list_size >= 2:
+                self.stop_on_match = opt_list[1] == "yes"
+                if list_size == 3:
+                    self.stop_token = opt_list[2]
+
+        else:
+            raise ValueError(self.name +
+                             " process accepts only up to 3 options")
+
+    def _reset_result_data(self):
+        """Clears result_data list."""
+        self.result_data = []
 
     def _match_regex(self, text_line):
-        """Applies regular expression from 'regex' variable.
+        """Applies regular expression from 'regex' attribute.
 
         Args:
             text_line: Line of text to be processed.
@@ -286,6 +311,22 @@ class RegexRead:
         """
         return re.findall(self.regex, text_line)
 
+    def _match_and_store(self, text_line):
+        """Applies regular expression and store results to result_data..
+
+        Args:
+            text_line: Line of text to be processed.
+
+        Returns:
+            True if 1 or more matches were found.
+        """
+        match_found = False
+        result_list = self._match_regex(text_line)
+        if result_list:
+            match_found = True
+            self.result_data.extend(result_list)
+
+        return match_found
 
     def _cleanup_whitespaces(self, line):
         """Removes all whitespaces from a string.
@@ -310,20 +351,36 @@ class RegexRead:
             dictionary depending on wheter the 'store_names' flag is
             set.
         """
-        line = process_input.readline()
-        if line:
-            clean_line = self._cleanup_whitespaces(line)
-            #data = re.findall("\[(.*?)\]", stripTemp)
-            #data = re.findall("\\" + self.token1 + "(.*?)\\" + self.token2,
-                              #stripTemp)
+        execute_once = (self.stop_token is None) and not self.stop_on_match
+        continue_exec = True
 
-            data = self._match_regex(clean_line)
+        self._reset_result_data()
 
-        else:
-            process_input = None
-            data = None
+        while continue_exec:
+            line = process_input.readline()
 
-        return process_input, data
+            if execute_once:
+                continue_exec = False
+
+            if line:
+                if self.stop_token is not None and self.stop_token in line:
+                    continue_exec = False
+
+                clean_line = self._cleanup_whitespaces(line)
+                #data = re.findall("\[(.*?)\]", stripTemp)
+                #data = re.findall("\\" + self.token1 + "(.*?)\\" + self.token2,
+                                #stripTemp)
+
+                match_found = self._match_and_store(clean_line)
+
+                if match_found and self.stop_on_match:
+                    continue_exec = False
+
+            else:
+                process_input = None
+                data = None
+                continue_exec = False
+        return process_input, self.result_data
 
 
 class ReadBetweenTokens(RegexRead):
@@ -503,8 +560,13 @@ class MultipleRegexRead(RegexRead):
         clean_whitespaces: flag that indicates if whitespaces should
             be cleaned or not.
     """
-    def __init__(self, exclusive_match, clean_whitespaces=True, regex_dict = {}):
-        super().__init__()
+    def __init__(self,
+                 exclusive_match,
+                 clean_whitespaces=True,
+                 stop_on_match=True,
+                 stop_token=None,
+                 regex_dict = {}):
+        super().__init__(None, stop_on_match, stop_token)
         self.help = "Reads text using multiple Regular Expressions"
         self.name = "MULTIREGEXREAD"
         self.exclusive_match = exclusive_match
@@ -529,12 +591,18 @@ class MultipleRegexRead(RegexRead):
 
         list_size = len(opt_list)
         list_size_is_even = (list_size % 2 == 0)
-        if (list_size >= 2) and list_size_is_even:
-            self.exclusive_match = opt_list[0] == "yes"
-            self.clean_whitespaces = opt_list[1] == "yes"
 
-            if list_size > 2:
-                it = iter(opt_list[2:])
+        if (list_size >= 3) and list_size_is_even:
+            self.stop_on_match = opt_list[0] == "yes"
+
+            if opt_list[1]:
+                self.stop_token = opt_list[1]
+
+            self.exclusive_match = opt_list[2] == "yes"
+            self.clean_whitespaces = opt_list[3] == "yes"
+
+            if list_size > 4:
+                it = iter(opt_list[4:])
                 listOfTuples = zip(it, it)
                 for regex_id, regex in listOfTuples:
                     if regex_id in self.regex_dict:
@@ -544,7 +612,12 @@ class MultipleRegexRead(RegexRead):
                 #print(self.regex_dict)
         else:
             raise ValueError(self.name +
-                             " process requires an even number of options")
+                             (" process requires at least 4 (and "
+                                 " always an even number of) options"))
+
+    def _reset_result_data(self):
+        """Clears result_data dictionary."""
+        self.result_data = {}
 
     def _cleanup_whitespaces(self, line):
         """Clean_up as RegexRead or no clean_up.
@@ -560,8 +633,13 @@ class MultipleRegexRead(RegexRead):
 
         return line
 
-    def _match_regex(self, text_line):
-        """Applies multiple regular expressions from 'regex_list' variable.
+    def _match_and_store(self, text_line):
+        """Applies multiple regular expressions to the text_line variable.
+
+        This method applies all regular expressions present in the regex_dict
+        attribute to the text_line variable. Regular expressions are tied to
+        identifiers (regex_id), matches are stored in the result_data variable
+        as a dictionary of lists (for each identifier a list of results).
 
         Args:
             text_line: Line of text to be processed.
@@ -574,15 +652,20 @@ class MultipleRegexRead(RegexRead):
             that matched it.
         """
         match_found = False
-        result_dict = {}
+
         for regex_id, regex_list in self.regex_dict.items():
             for regex in regex_list:
                 if not (match_found and self.exclusive_match):
                     self.regex = regex
-                    temp = super()._match_regex(text_line)
+
+                    temp = self._match_regex(text_line)
 
                     if temp:
                         match_found = True
-                        result_dict.update({regex_id : temp})
+                        if regex_id in self.result_data:
+                            old_data = self.result_data[regex_id]
+                            old_data.extend(temp)
 
-        return result_dict
+                        self.result_data.update({regex_id : temp})
+
+        return match_found
