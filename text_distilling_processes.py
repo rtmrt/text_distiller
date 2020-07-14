@@ -364,13 +364,11 @@ class RegexRead:
 
             if line:
                 if self.stop_token is not None and self.stop_token in line:
+                    print(self.stop_token)
+                    print(self.stop_token in line)
                     continue_exec = False
 
                 clean_line = self._cleanup_whitespaces(line)
-                #data = re.findall("\[(.*?)\]", stripTemp)
-                #data = re.findall("\\" + self.token1 + "(.*?)\\" + self.token2,
-                                #stripTemp)
-
                 match_found = self._match_and_store(clean_line)
 
                 if match_found and self.stop_on_match:
@@ -378,7 +376,6 @@ class RegexRead:
 
             else:
                 process_input = None
-                data = None
                 continue_exec = False
         return process_input, self.result_data
 
@@ -665,7 +662,7 @@ class MultipleRegexRead(RegexRead):
                         if regex_id in self.result_data:
                             old_data = self.result_data[regex_id]
                             old_data.extend(temp)
-
-                        self.result_data.update({regex_id : temp})
+                        else:
+                            self.result_data.update({regex_id : temp})
 
         return match_found
