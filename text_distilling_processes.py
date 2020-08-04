@@ -21,6 +21,7 @@ method.
 
 import re
 
+from data_distiller.options import OptType, OptManager
 
 def read_text(input_file):
     """Simple method that reads whitespace separated text fragment.
@@ -60,6 +61,7 @@ class PrintText:
     def __init__(self):
         self.help = "Prints extracted data"
         self.name = "PRINTTEXT"
+        self.usage = self.name
 
     def distill(self, process_input):
         """Reads and prints whitespace separated text.
@@ -72,7 +74,6 @@ class PrintText:
         text = read_text(process_input)
         print(text)
         return process_input, None
-
 
 class PrintLine:
     """Reads and prints to console a complete line of text.
@@ -87,6 +88,7 @@ class PrintLine:
     def __init__(self):
         self.help = "Reads and prints a line of text"
         self.name = "PRINTLINE"
+        self.usage = self.name
 
     def distill(self, process_input):
         """Reads and prints to the console a complete line of text.
@@ -117,24 +119,50 @@ class ReadLine:
         sample_name: Optional name for the lines read by this process.
         strip_new_line_only: Optional flag that determines if all
             trailing whitespaces are removed or only '\n'.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
     """
+
+    _SAMPLE_NAME = "sample_name"
+    _STRIP_NEW_LINE_ONLY = "strip_new_line_only"
+
     def __init__(self, sample_name=None, strip_new_line_only=False):
-        self.help = "Reads a line of text"
+        super().__init__()
         self.name = "READLINE"
+        self.help = "Reads a line of text"
         self.sample_name = sample_name
         self.strip_new_line_only = strip_new_line_only
 
-    def config_process(self, opt_list):
+        self._opt_mngr = OptManager()
+        self._opt_mngr.register_opt(self._SAMPLE_NAME, OptType.STRING, False)
+        self._opt_mngr.register_opt(self._STRIP_NEW_LINE_ONLY,
+                                   OptType.BOOL,
+                                   False)
+
+        self.usage = self._opt_mngr.usage()
+
+    def config_process(self, opt_dict):
         """Configures the 'sample_name' and sample format.
 
-        This method simply sets the 'sample_name' attribute, if this
-        attribute is set then each line read will be sampled using a
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed the 'sample_name' and/or
+        'strip_new_line_only' attributes are set.
+        if 'sample_name' is set then each line read will be sampled using a
         dictionary using the 'sample_name' attribute as key.
 
         Args:
-            opt_list: List of size 1 that contains a string.
+            opt_dict: Dict with at least one of the possible options.
         """
-        self.sample_name = opt_list[0]
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
+
+        if self._SAMPLE_NAME in processed_opt:
+            self.sample_name = processed_opt[self._SAMPLE_NAME]
+
+        if self._STRIP_NEW_LINE_ONLY in processed_opt:
+            self.strip_new_line_only = processed_opt[self._STRIP_NEW_LINE_ONLY]
 
     def distill(self, process_input):
         """Reads a text line from file handle.
@@ -178,6 +206,7 @@ class SkipLine:
     def __init__(self):
         self.help = "Skips a single line"
         self.name = "SKIPLINE"
+        self.usage = self.name
 
     def distill(self, process_input):
         """Reads a text line from file handle.
@@ -193,7 +222,6 @@ class SkipLine:
             process_input = None
         return process_input, None
 
-
 class SkipUntilToken:
     """Reads lines until it finds one containing a specific token.
 
@@ -204,22 +232,37 @@ class SkipUntilToken:
         help: String containing a short help text.
         name: String containing the name that identifies this process.
         token: String token that identifies last line to be skipped.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
     """
+
+    _TOKEN = "token"
+
     def __init__(self, token=None):
-        self.help = "Skips lines until it finds a specific token"
+        super().__init__()
         self.name = "SKIPUNTIL"
+        self.help = "Skips lines until it finds a specific token"
         self.token = token
 
-    def config_process(self, opt_list):
+        self._opt_mngr = OptManager()
+        self._opt_mngr.register_opt(self._TOKEN, OptType.STRING, True)
+
+    def config_process(self, opt_dict):
         """Configures the skip until 'token'.
 
-        This method simply sets the 'token' attribute, this attribute
-        is used to identify the last line to be read by this process.
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed the 'token' attribute is set.
+        The 'token' attribute is used to identify the last line to be
+        read by this process.
 
         Args:
-            opt_list: List of size 1 that contains a string.
+            opt_Dict: Dict that contains the 'token' option.
         """
-        self.token = opt_list[0]
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
+        self.token = processed_opt[self._TOKEN]
 
     def distill(self, process_input):
         """Reads lines until it finds one containing a specific token.
@@ -247,7 +290,6 @@ class SkipUntilToken:
 
         return process_input, None
 
-
 class RegexRead:
     """Reads a line of text and extract text using regular expressions.
 
@@ -261,40 +303,63 @@ class RegexRead:
         name: String containing the name that identifies this process.
         regex: String containing the regular expression.
         stop_token: Optional string containing a stop condition.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
     """
+
+    _REGEX = "regex"
+    _STOP_ON_MATCH = "stop_on_match"
+    _STOP_TOKEN = "stop_token"
+
     def __init__(self, regex=None, stop_on_match=False, stop_token=None):
-        self.help = "Reads text using Regular Expressions"
+        super().__init__()
         self.name = "REGEXREAD"
+        self.help = "Reads text using Regular Expressions"
+
+        self._opt_mngr = OptManager()
+        self._usage = self._register_options()
+
         self.regex = regex
         self.stop_on_match = stop_on_match
         self.stop_token = stop_token
 
         self.result_data = None
 
-    def config_process(self, opt_list):
+    def _register_options(self):
+        """Registers the expected options used by this process.
+
+        This method registers the expected names and types for options available
+        for this process.
+        """
+        self._opt_mngr.register_opt(self._REGEX, OptType.STRING, False)
+        self._opt_mngr.register_opt(self._STOP_ON_MATCH, OptType.BOOL, False)
+        self._opt_mngr.register_opt(self._STOP_TOKEN, OptType.STRING, False)
+
+        return self._opt_mngr.usage()
+
+    def config_process(self, opt_dict):
         """Configures the 'regex' variable.
 
-        This method simply sets the 'regex' attribute, this attribute
-        is used to extract text using regular expressions.
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed the 'regex', 'stop_on_match' and
+        'stop_token' attributes are set.
 
         Args:
-            opt_list: List of size 1, 2 or 3 that contain strings.
-                1 - regex = opt_list[0].
-                2 - The same as 1 plus stop_on_match is True 
-                    if opt_list[1] == "yes"
-                3 - The same as 2 plus stop_token = opt_list[2]
+            opt_dict: Dictionary at least one option.
         """
-        list_size = len(opt_list)
-        if list_size in range(1,3):
-            self.regex = opt_list[0]
-            if list_size >= 2:
-                self.stop_on_match = opt_list[1] == "yes"
-                if list_size == 3:
-                    self.stop_token = opt_list[2]
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
 
-        else:
-            raise ValueError(self.name +
-                             " process accepts only up to 3 options")
+        if self._REGEX in processed_opt:
+            self.regex = processed_opt[self._REGEX]
+
+        if self._STOP_ON_MATCH in processed_opt:
+            self.stop_on_match = processed_opt[self._STOP_ON_MATCH]
+
+        if self._STOP_TOKEN in processed_opt:
+            self.stop_token = processed_opt[self._STOP_TOKEN]
 
     def _reset_result_data(self):
         """Clears result_data list."""
@@ -358,24 +423,26 @@ class RegexRead:
 
         while continue_exec:
             line = process_input.readline()
-
+            #print(f"1 - {line}")
             if execute_once:
                 continue_exec = False
 
             if line:
                 if self.stop_token is not None and self.stop_token in line:
-                    print(self.stop_token)
-                    print(self.stop_token in line)
+                    #print(f"2 - stop_token is not None and stop_token in line: {self.stop_token}")
                     continue_exec = False
 
                 clean_line = self._cleanup_whitespaces(line)
                 match_found = self._match_and_store(clean_line)
 
                 if match_found and self.stop_on_match:
+                    #print("2 - match found and stop_on_match")
                     continue_exec = False
 
             else:
+                #print("3 - else")
                 process_input = None
+                data = None
                 continue_exec = False
         return process_input, self.result_data
 
@@ -394,57 +461,77 @@ class ReadBetweenTokens(RegexRead):
         token1: String containing the first delimiter token.
         token2: String containing the second delimiter token.
         store_names: Flag the indicates if names should be extracted.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
     """
+
+    _TOKEN1 = "token1"
+    _TOKEN2 = "token2"
+    _STORE_NAMES = "store_names"
+
     def __init__(self, token1=None, token2=None, store_names=False):
         super().__init__()
-        self.help = "Reads text between token1 and token2, optionally reads field names"
         self.name = "READBTWTOKENS"
+        self.help = "Reads text between token1 and token2, optionally reads field names"
         self.token1 = token1
         self.token2 = token2
         self._set_regex(token1, token2)
         self.store_names = store_names
 
+    def _register_options(self):
+        """Registers the expected options used by this process.
+
+        This method registers the expected names and types for options available
+        for this process.
+        """
+        self._opt_mngr.register_opt(self._TOKEN1, OptType.STRING, False)
+        self._opt_mngr.register_opt(self._TOKEN2, OptType.STRING, False)
+        self._opt_mngr.register_opt(self._STORE_NAMES, OptType.BOOL, False)
+
     def _set_regex(self, token1, token2):
         tk1 = None
         tk2 = None
         if token1 is not None:
-            tk1 = token1
+            tk1 = self.token1 = token1
         if token2 is not None:
-            tk2 = token2
+            tk2 = self.token2 = token2
         else:
-            tk2 = tk1
+            tk2 = self.token2 = tk1
 
         if (tk1 is not None) and (tk2 is not None):
             self.regex = "\\" + tk1 + "(.*?)\\" + tk2
 
-    def config_process(self, opt_list):
+    def config_process(self, opt_dict):
         """Configures the delimiter tokens and the store name option.
 
-        This method sets 'token1' and 'token2' attributes, optionally
-        the 'store_names' attribute is also set. The attributes are
-        set according to 'len(opt_list)':
-            1 - 'token1' == 'token2' == 'opt_list[0]'.
-            2 - 'token1' == 'opt_list[0] and 'token2' == 'opt_list[1]'.
-            3 - The same as 2 and store_names is set to True if
-                'opt_list[2]' == 'yes'.
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed the 'store_names' may be set and/or the
+        '_set_regex' method may be called to properly set the 'regex'
+        attribute of the RegexRead baseclass.
 
         Args:
-            opt_list: List of size 1,2, or 3 that contains strings.
+            opt_dict: Dictionary at least one option.
         """
-        list_size = len(opt_list)
-        if list_size == 1:
-            #self.token1 = opt_list[0]
-            #self.token2 = opt_list[0]
-            self._set_regex(opt_list[0], opt_list[0])
-        elif list_size in (2, 3):
-            #self.token1 = opt_list[0]
-            #self.token2 = opt_list[1]
-            self._set_regex(opt_list[0], opt_list[1])
-            if list_size == 3:
-                self.store_names = opt_list[2] == "yes"
-        else:
-            raise ValueError(self.name +
-                             " process accepts only up to 3 options")
+        #self._check_options(opt_dict)
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
+
+        token1_present = self._TOKEN1 in processed_opt
+        token2_present = self._TOKEN2 in processed_opt
+        if token1_present and token2_present:
+            self._set_regex(processed_opt[self._TOKEN1],
+                            processed_opt[self._TOKEN2])
+        elif token1_present:
+            token = processed_opt[self._TOKEN1]
+            self._set_regex(token, token)
+        elif token2_present:
+            token = processed_opt[self._TOKEN1]
+            self._set_regex(token, token)
+
+        if self._STORE_NAMES in processed_opt:
+            self.store_names = processed_opt[self._STORE_NAMES]
 
     def distill(self, process_input):
         """Reads a line and extract data between delimiting tokens.
@@ -461,14 +548,10 @@ class ReadBetweenTokens(RegexRead):
         line = process_input.readline()
         if line:
             clean_line = self._cleanup_whitespaces(line)
-            # data = re.findall("\[(.*?)\]", stripTemp)
-            data = re.findall("\\" + self.token1 + "(.*?)\\" + self.token2,
-                              clean_line)
+            data = re.findall(self.regex, clean_line)
 
             if self.store_names:
-                names = re.sub("\\"+self.token1 + "(.*?)\\" + self.token2,
-                               " ",
-                               clean_line)
+                names = re.sub(self.regex, " ", clean_line)
                 names = names.split()
                 dict_data = dict()
                 for i, name in enumerate(names):
@@ -507,24 +590,44 @@ class ReadBetweenWhitespaces(RegexRead):
         name: String containing the name that identifies this process.
         clean_whitespaces: flag that indicates wheter repeated
             whitespaces shoould be removed.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
     """
+
+    _CLEAN_WHITESPACES = "clean_whitespaces"
+
     def __init__(self, clean_whitespaces=True):
         whitespace_token = "(.*?)\\s"
         super().__init__(whitespace_token)
-        self.help = "Reads text between whitespaces."
         self.name = "READBTWSPACES"
+        self.help = "Reads text between whitespaces."
         self.clean_whitespaces = clean_whitespaces
 
-    def config_process(self, opt_list):
+    def _register_options(self):
+        """Registers the expected options used by this process.
+
+        This method registers the expected names and types for options available
+        for this process.
+        """
+        self._opt_mngr.register_opt(self._CLEAN_WHITESPACES,
+                                   OptType.BOOL,
+                                   True)
+
+    def config_process(self, opt_dict):
         """Replaces base class implementation, should not be called.
 
-        This method should not be called, ReadBetweenWhitespaces does
-        not have optional parameters
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed the 'clean_whitespaces' attribute is
+        set.
 
         Args:
-            opt_list: List of size 1,2, or 3 that contains strings.
+            opt_dict: Dict containing the '_CLEAN_WHITESPACES' options.
         """
-        raise ValueError(self.name + " does not accept options")
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
+        self.clean_whitespaces = processed_opt[self._CLEAN_WHITESPACES]
 
     def _cleanup_whitespaces(self, line):
         """Replaces repeated whitespaces with a single whitespace.
@@ -556,65 +659,102 @@ class MultipleRegexRead(RegexRead):
             expression matching continues once a match is found.
         clean_whitespaces: flag that indicates if whitespaces should
             be cleaned or not.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
     """
+
+    _CLEAN_WHITESPACES = "clean_whitespaces"
+    _EXCLUSIVE_MATCH = "exclusive_match"
+    _REGEX_LIST = "regex_list"
+    _STOP_ON_MATCH = "stop_on_match"
+    _STOP_TOKEN = "stop_token"
+
     def __init__(self,
                  exclusive_match,
                  clean_whitespaces=True,
                  stop_on_match=True,
                  stop_token=None,
-                 regex_dict = {}):
+                 regex_dict = dict()):
         super().__init__(None, stop_on_match, stop_token)
-        self.help = "Reads text using multiple Regular Expressions"
         self.name = "MULTIREGEXREAD"
+        self.help = "Reads text using multiple Regular Expressions"
         self.exclusive_match = exclusive_match
         self.clean_whitespaces = clean_whitespaces
         self.regex_dict = regex_dict
 
-    def config_process(self, opt_list):
-        """Configures option flags and list of regular expressions.
+    def _register_options(self):
+        """Registers the expected options used by this process.
 
-        This method always sets the 'exclusive_match' and 'clean_whitespaces'
-        attributes, optionally it also replaces the regular expressions present
-        in 'regex_list'. The attributes are set according to 'len(opt_list)':
-            2 - 'exclusive_match' is set to True if 'opt_list[0]' == 'yes',
-                'clean_whitespaces' == is set to True if 'opt_list[1]' == 'yes'.
-            4 or more (only even values are supported) - The same as 2 and
-                regex_dict is built from 'opt_list[2:]'.
+        This method registers the expected names and types for options available
+        for this process.
+        """
+        self._opt_mngr.register_opt(self._CLEAN_WHITESPACES,
+                                   OptType.BOOL,
+                                   False)
+        self._opt_mngr.register_opt(self._EXCLUSIVE_MATCH, OptType.BOOL, False)
+        self._opt_mngr.register_opt(self._REGEX_LIST,
+                                   OptType.LIST_OF_TUPLES,
+                                   False)
+        self._opt_mngr.register_opt(self._STOP_ON_MATCH, OptType.BOOL, False)
+        self._opt_mngr.register_opt(self._STOP_TOKEN, OptType.STRING, False)
+
+    def config_process(self, opt_dict):
+        """Configures option flags, 'stop_token' and regex dictionary.
+
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed some (or all) of the following options
+        are set:
+            - clean_whitespaces: Removes extra whitespaces,
+            - exclusive_match: Indicates that, for each text line, regex
+            matching stops after the first match is found.
+            - stop_on_match: Stops reading new lines once a match is found.
+            - stop_token: If this token (string) is set then each read line is
+                checked for this token, if it is found then no other line will
+                be read.
+            - regex_dict: Dictionary mapping ids (regex_id) to a list of regular
+                expressions.
 
         Args:
-            opt_list: List of size 2 or more that contains strings.
+            opt_dict: Dictionary that contains the data for at least one of
+            the following attributes:
+                - clean_whitespaces:    bool
+                - exclusive_match:      bool
+                - regex_dict:           dictionary
+                - stop_on_match:        bool
+                - stop_token:           string
 
         """
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
 
-        list_size = len(opt_list)
-        list_size_is_even = (list_size % 2 == 0)
+        if self._CLEAN_WHITESPACES in processed_opt:
+            self.clean_whitespaces = processed_opt[self._CLEAN_WHITESPACES]
 
-        if (list_size >= 3) and list_size_is_even:
-            self.stop_on_match = opt_list[0] == "yes"
+        if self._EXCLUSIVE_MATCH in opt_dict:
+            self.exclusive_match = processed_opt[self._EXCLUSIVE_MATCH]
 
-            if opt_list[1]:
-                self.stop_token = opt_list[1]
+        if self._REGEX_LIST in processed_opt:
+            self.regex_dict = dict()
+            list_of_tuples = processed_opt[self._REGEX_LIST]
+            for regex_id, regex in list_of_tuples:
+                #print(regex_id)
+                #print(regex)
+                if regex_id in self.regex_dict:
+                    self.regex_dict[regex_id].append(regex)
+                else:
+                    self.regex_dict[regex_id] = [regex]
 
-            self.exclusive_match = opt_list[2] == "yes"
-            self.clean_whitespaces = opt_list[3] == "yes"
+        if self._STOP_ON_MATCH in processed_opt:
+            self.stop_on_match = processed_opt[self._STOP_ON_MATCH]
 
-            if list_size > 4:
-                it = iter(opt_list[4:])
-                listOfTuples = zip(it, it)
-                for regex_id, regex in listOfTuples:
-                    if regex_id in self.regex_dict:
-                        self.regex_dict[regex_id].append(regex)
-                    else:
-                        self.regex_dict[regex_id] = [regex]
-                #print(self.regex_dict)
-        else:
-            raise ValueError(self.name +
-                             (" process requires at least 4 (and "
-                                 " always an even number of) options"))
+        if self._STOP_TOKEN in processed_opt:
+            self.stop_token = processed_opt[self._STOP_TOKEN]
 
     def _reset_result_data(self):
         """Clears result_data dictionary."""
-        self.result_data = {}
+        self.result_data = dict()
 
     def _cleanup_whitespaces(self, line):
         """Clean_up as RegexRead or no clean_up.
@@ -650,8 +790,10 @@ class MultipleRegexRead(RegexRead):
         """
         match_found = False
 
+        #print(text_line)
         for regex_id, regex_list in self.regex_dict.items():
             for regex in regex_list:
+                #print(regex, self.exclusive_match)
                 if not (match_found and self.exclusive_match):
                     self.regex = regex
 
