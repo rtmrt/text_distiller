@@ -808,3 +808,176 @@ class MultipleRegexRead(RegexRead):
                             self.result_data.update({regex_id : temp})
 
         return match_found
+
+class BlockRegexRead(RegexRead):
+    """Reads and matches a line of text to multiple Regular expressions.
+
+    The BlockRegexRead class is very similar to the MultiRegexRead class,
+    also working with the concept of recurring blocks of text. As with
+    MultiRegexRead, BlockRegexRead attempts to match a line of text to
+    1 or more regular expressions but also attempting to detect a
+    "block end token". Each detected block is identified with a incresing
+    index number.
+
+    Unlike MultipleRegexRead BlockRegexRead assumes that matches are
+    exclusive (i.e. a line matches only a single regular expression, the
+    first one tested), and that matches only stop when the "stop_token"
+    is found (i.e stop_on_match is false),
+
+    Attributes:
+        help: String containing a short help text.
+        name: String containing the name that identifies this process.
+        block_end_token: String identifying the end of a block of text.
+        regex_dict: Dict of regular regular expressions and their identifiers.
+        clean_whitespaces: flag that indicates if whitespaces should
+            be cleaned or not.
+        _opt_mngr: Object of the OptManager class, stores optional
+            argument names and their types, aswell as providing methods
+            to process and check these optional arguments.
+    """
+
+    _BLOCK_END_TOKEN = "block_end_token"
+    _CLEAN_WHITESPACES = "clean_whitespaces"
+    _REGEX_LIST = "regex_list"
+    _STOP_TOKEN = "stop_token"
+
+    def __init__(self,
+                 block_end_token=None,
+                 stop_token=None,
+                 clean_whitespaces=True,
+                 regex_dict = {}):
+        super().__init__(None, False, stop_token)
+        self.name = "BLOCKREGEXREAD"
+        self.help = "Reads blocks of text using multiple Regular Expressions"
+        self.block_end_token = block_end_token
+        self._block_count = 0
+        self.clean_whitespaces = clean_whitespaces
+        self.regex_dict = regex_dict
+
+    def _register_options(self):
+        """Registers the expected options used by this process.
+
+        This method registers the expected names and types for options available
+        for this process.
+        """
+        self._opt_mngr.register_opt(self._BLOCK_END_TOKEN,
+                                   OptType.STRING,
+                                   False)
+        self._opt_mngr.register_opt(self._CLEAN_WHITESPACES,
+                                   OptType.BOOL,
+                                   False)
+        self._opt_mngr.register_opt(self._REGEX_LIST,
+                                   OptType.LIST_OF_TUPLES,
+                                   False)
+        self._opt_mngr.register_opt(self._STOP_TOKEN, OptType.STRING, False)
+
+    def config_process(self, opt_dict):
+        """Configures option flags, 'stop_token' and regex dictionary.
+
+        This method uses the 'self._opt_mngr' object to process the
+        received 'opt_dict', the resulting 'processed_opt' dictionary
+        contains the options in an already compatible format. With the
+        options already processed some (or all) of the following options
+        are set:
+            - block_end_token: This token identifies that the end of a block
+                was found, all results include a 'token_id' that indicates
+                to which block a result corresponds to.
+            - clean_whitespaces: Removes extra whitespaces,
+            - stop_token: If this token (string) is set then each read line is
+                checked for this token, if it is found then no other line will
+                be read.
+            - regex_dict: Dictionary mapping ids (regex_id) to a list of regular
+                expressions.
+
+        Args:
+            opt_dict: Dictionary that contains the data for at least one of
+            the following attributes:
+                - block_end_token       string
+                - clean_whitespaces:    bool
+                - regex_dict:           dictionary
+                - stop_token:           string
+
+        """
+        processed_opt = self._opt_mngr.process_dict(opt_dict)
+
+        if self._BLOCK_END_TOKEN in processed_opt:
+            self.block_end_token = processed_opt[self._BLOCK_END_TOKEN]
+
+        if self._CLEAN_WHITESPACES in opt_dict:
+            self.clean_whitespaces = processed_opt[self._CLEAN_WHITESPACES]
+
+        if self._REGEX_LIST in processed_opt:
+            self.regex_dict = dict()
+            list_of_tuples = processed_opt[self._REGEX_LIST]
+            for regex_id, regex in list_of_tuples:
+                if regex_id in self.regex_dict:
+                    self.regex_dict[regex_id].append(regex)
+                else:
+                    self.regex_dict[regex_id] = [regex]
+
+        if self._STOP_TOKEN in processed_opt:
+            self.stop_token = processed_opt[self._STOP_TOKEN]
+
+    def _reset_result_data(self):
+        """Clears result_data dictionary."""
+        self.result_data = {}
+        self._block_count = 0
+
+    def _cleanup_whitespaces(self, line):
+        """Clean_up as RegexRead or no clean_up.
+
+        Args:
+            line: Line of text, possibly with whitespaces..
+
+        Returns:
+            The received text string with whitespaces removed or unchanged.
+        """
+        if self.clean_whitespaces:
+            line = super()._cleanup_whitespaces(line)
+
+        return line
+
+    def _match_and_store(self, text_line):
+        """Applies multiple regular expressions to the text_line variable.
+
+        This method applies all regular expressions present in the regex_dict
+        attribute to the text_line variable. Regular expressions are tied to
+        identifiers (regex_id), matches are stored in the result_data variable
+        as a dictionary of lists (for each identifier a list of results).
+
+        Args:
+            text_line: Line of text to be processed.
+
+        Returns:
+            If 'exclusive_match' is True then return a list with all
+            instances that match the desired regular expression.
+        """
+        if self.block_end_token in text_line:
+            self._block_count += 1
+
+        match_found = False
+        for regex_id, regex_list in self.regex_dict.items():
+            for regex in regex_list:
+                if not match_found:
+                    self.regex = regex
+
+                    temp = self._match_regex(text_line)
+
+                    if temp:
+                        match_found = True
+                        if regex_id in self.result_data:
+                            old_data = self.result_data[regex_id]
+                            block_id, prev_matches = old_data[-1]
+                            if block_id == self._block_count:
+                                old_data[-1][1].extend(temp)
+                            else:
+                                old_data.append((self._block_count, temp))
+                        else:
+                            temp_tuple = [(self._block_count, temp)]
+                            self.result_data.update({regex_id : temp_tuple})
+                        break
+
+            if match_found:
+                break
+
+        return match_found
